@@ -1,0 +1,38 @@
+version: '3.9'
+
+services:
+  sso-db:
+    image: postgres:16
+    container_name: sso-db
+    environment:
+      POSTGRES_USER: sso_user
+      POSTGRES_PASSWORD: sso_pass
+      POSTGRES_DB: sso_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - sso-db-data:/var/lib/postgresql/data
+    networks:
+      - city-events-net
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      - sso-db
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "${DATABASE_URL}",
+      "up"
+    ]
+    networks:
+      - city-events-net
+
+networks:
+  city-events-net:
+    driver: bridge
+
+volumes:
+  sso-db-data:
