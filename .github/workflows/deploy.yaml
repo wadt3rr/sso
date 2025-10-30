@@ -54,17 +54,21 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Run DB Migrations on server
         run: |
-          # Скопировать миграции на сервер
+          # Убедимся, что папка для деплоя существует
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mkdir -p ${{ env.DEPLOY_DIRECTORY }}/migrations"
+
+          # Скопировать миграции
           scp -i deploy_key.pem -o StrictHostKeyChecking=no -r ./migrations ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrations
-          # Скопировать migrate tool (если нужен бинарь)
-          scp -i deploy_key.pem -o StrictHostKeyChecking=no ./migrate ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrate || true 
-          # Запускать миграции прямо на сервере
+
+          # Выполнить миграции
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "
             cd ${{ env.DEPLOY_DIRECTORY }} &&
             docker run --rm -v \$(pwd)/migrations:/migrations --network host migrate/migrate \
               -path=/migrations \
               -database 'postgres://sso_user:${{ secrets.PG_PASSWORD }}@localhost:5432/sso_db?sslmode=disable' up
           "
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Build app
         run: |
           go mod download
