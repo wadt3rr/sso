@@ -37,25 +37,11 @@ jobs:
         run: |
           echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key.pem
           chmod 600 deploy_key.pem
-      - name: Install PostgreSQL 16 on server
+      - name: Check database connection
         run: |
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "
-            sudo apt-get update &&
-            sudo apt-get install -y wget gnupg2 &&
-            sudo mkdir -p /etc/apt/keyrings &&
-            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/pgdg.gpg &&
-            echo 'deb [signed-by=/etc/apt/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list &&
-            sudo apt-get update &&
-            sudo apt-get install -y postgresql-16 &&
-            sudo systemctl enable postgresql &&
-            sudo systemctl start postgresql &&
-
-            sudo -u postgres psql -v ON_ERROR_STOP=1 -c \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='sso_user') THEN CREATE USER sso_user WITH PASSWORD '${{ secrets.PG_PASSWORD }}'; END IF; END \$\$;\" &&
-            sudo -u postgres psql -v ON_ERROR_STOP=1 -c \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='sso_db') THEN CREATE DATABASE sso_db OWNER sso_user; END IF; END \$\$;\" &&
-            sudo -u postgres psql -c \"ALTER USER sso_user WITH SUPERUSER;\"
+            PGPASSWORD='${{ secrets.PG_PASSWORD }}' psql -h localhost -U sso_user -d sso_db -c 'SELECT NOW();'
           "
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Run DB Migrations on server
         run: |
           ls -la $GITHUB_WORKSPACE/migrations
