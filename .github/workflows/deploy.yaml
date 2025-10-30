@@ -44,17 +44,20 @@ jobs:
           "
       - name: Run DB Migrations on server
         run: |
+          echo "Проверяем, что миграции есть локально:"
           ls -la $GITHUB_WORKSPACE/migrations
-          # Убедимся, что папка для деплоя существует
+
+          echo "Создаём папку на сервере для миграций..."
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mkdir -p ${{ env.DEPLOY_DIRECTORY }}/migrations"
 
-          # Скопировать миграции
-          scp -i deploy_key.pem -o StrictHostKeyChecking=no -r $GITHUB_WORKSPACE/migrations ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrations
+          echo "Копируем миграции на сервер..."
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no -r $GITHUB_WORKSPACE/migrations ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/
 
-          # Выполнить миграции
+          echo "Запускаем миграции..."
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "
-            cd ${{ env.DEPLOY_DIRECTORY }} &&
-            docker run --rm -v \$(pwd)/migrations:/migrations --network host migrate/migrate \
+            docker run --rm \
+              -v ${{ env.DEPLOY_DIRECTORY }}/migrations:/migrations \
+              --network host migrate/migrate \
               -path=/migrations \
               -database 'postgres://sso_user:${{ secrets.PG_PASSWORD }}@localhost:5432/sso_db?sslmode=disable' up
           "
