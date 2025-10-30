@@ -49,7 +49,7 @@ jobs:
             sudo apt-get install -y postgresql-16 &&
             sudo systemctl enable postgresql &&
             sudo systemctl start postgresql &&
-            sudo -u postgres psql -c \"CREATE USER sso_user WITH PASSWORD '${{ secrets.PG_PASSWORD }}';\" &&
+            sudo -u postgres psql -c \"CREATE USER IF NOT EXISTS sso_user WITH PASSWORD '${{ secrets.PG_PASSWORD }}';\" &&
             sudo -u postgres psql -c \"CREATE DATABASE sso_db OWNER sso_user;\" &&
             sudo -u postgres psql -c \"ALTER USER sso_user WITH SUPERUSER;\"
           "
