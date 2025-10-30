@@ -38,8 +38,9 @@ jobs:
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "
             sudo apt-get update &&
             sudo apt-get install -y wget gnupg2 &&
-            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - &&
-            echo 'deb http://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list &&
+            sudo mkdir -p /etc/apt/keyrings &&
+            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/keyrings/pgdg.gpg &&
+            echo 'deb [signed-by=/etc/apt/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list &&
             sudo apt-get update &&
             sudo apt-get install -y postgresql-16 &&
             sudo systemctl enable postgresql &&
@@ -47,7 +48,6 @@ jobs:
           "
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-
       - name: Run DB Migrations on server
         run: |
           # Скопировать миграции на сервер
