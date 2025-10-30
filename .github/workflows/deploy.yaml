@@ -22,11 +22,6 @@ jobs:
         uses: actions/checkout@v2
         with:
           ref: ${{ github.event.inputs.tag }}
-      - name: Debug SSH key
-        run: |
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > deploy_key.pem
-          head -5 deploy_key.pem
-          tail -5 deploy_key.pem
       - name: Check if tag exists
         run: |
           git fetch --all --tags
@@ -68,7 +63,7 @@ jobs:
             cd ${{ env.DEPLOY_DIRECTORY }} &&
             docker run --rm -v \$(pwd)/migrations:/migrations --network host migrate/migrate \
               -path=/migrations \
-              -database 'postgres://sso_user:sso_pass@localhost:5432/sso_db?sslmode=disable' up
+              -database 'postgres://sso_user:${{ secrets.PG_PASSWORD }}@localhost:5432/sso_db?sslmode=disable' up
           "
       - name: Build app
         run: |
