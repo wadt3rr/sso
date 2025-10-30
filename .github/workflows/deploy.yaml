@@ -43,12 +43,15 @@ jobs:
             sudo apt-get update &&
             sudo apt-get install -y wget gnupg2 &&
             sudo mkdir -p /etc/apt/keyrings &&
-            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/pgdg.gpg
+            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/pgdg.gpg &&
             echo 'deb [signed-by=/etc/apt/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list &&
             sudo apt-get update &&
             sudo apt-get install -y postgresql-16 &&
             sudo systemctl enable postgresql &&
-            sudo systemctl start postgresql
+            sudo systemctl start postgresql &&
+            sudo -u postgres psql -c \"CREATE USER sso_user WITH PASSWORD '${{ secrets.PG_PASSWORD }}';\" &&
+            sudo -u postgres psql -c \"CREATE DATABASE sso_db OWNER sso_user;\" &&
+            sudo -u postgres psql -c \"ALTER USER sso_user WITH SUPERUSER;\"
           "
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
