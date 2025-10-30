@@ -1,0 +1,98 @@
+
+name: Deploy Auth
+
+on:
+  workflow_dispatch: # Ручной запуск
+    inputs: # Что нужно ввести вручную при запуске
+      tag: # Мы будем указывать тег для деплоя
+        description: 'Tag to deploy'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest # ОС для runner'а
+    env: # Вводим переменные, которые будем использовать далее
+      HOST: root@87.228.79.163 # логин / хост сервера, на которые деплоим
+      DEPLOY_DIRECTORY: /root/apps/grpc-auth # в какую папку на сервере деплоим
+      CONFIG_PATH: /root/apps/grpc-auth/config/prod.yaml # конфиг сервиса на сервере  
+      ENV_FILE_PATH: /root/apps/grpc-auth/config.env # env-файл с настройками
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event.inputs.tag }}
+      - name: Check if tag exists
+        run: |
+          git fetch --all --tags
+          if ! git tag | grep -q "^${{ github.event.inputs.tag }}$"; then
+            echo "error: Tag '${{ github.event.inputs.tag }}' not found"
+            exit 1
+          fi
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.24
+      - name: Install PostgreSQL 16 on server
+        run: |
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "
+            sudo apt-get update &&
+            sudo apt-get install -y wget gnupg2 &&
+            wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add - &&
+            echo 'deb http://apt.postgresql.org/pub/repos/apt jammy-pgdg main' | sudo tee /etc/apt/sources.list.d/pgdg.list &&
+            sudo apt-get update &&
+            sudo apt-get install -y postgresql-16 &&
+            sudo systemctl enable postgresql &&
+            sudo systemctl start postgresql
+          "
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Run DB Migrations on server
+        run: |
+          # Скопировать миграции на сервер
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no -r ./migrations ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrations
+          # Скопировать migrate tool (если нужен бинарь)
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no ./migrate ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrate || true 
+          # Запускать миграции прямо на сервере
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "
+            cd ${{ env.DEPLOY_DIRECTORY }} &&
+            docker run --rm -v \$(pwd)/migrations:/migrations --network host migrate/migrate \
+              -path=/migrations \
+              -database 'postgres://sso_user:sso_pass@localhost:5432/sso_db?sslmode=disable' up
+          "
+      - name: Build app
+        run: |
+          go mod download
+          go build -o grpc-auth ./cmd/sso
+      - name: Deploy to VM
+        run: |
+          sudo apt-get install -y ssh rsync
+          echo "$DEPLOY_SSH_KEY" > deploy_key.pem
+          chmod 600 deploy_key.pem
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mkdir -p ${{ env.DEPLOY_DIRECTORY }}"
+          rsync -avz -e 'ssh -i deploy_key.pem -o StrictHostKeyChecking=no' --exclude='.git' ./ ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Remove old systemd service file
+        run: |
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "rm -f /etc/systemd/system/grpc-auth.service"
+      - name: List workspace contents
+        run: |
+          echo "Listing deployment folder contents:"
+          ls -la ${{ github.workspace }}/deployment
+      - name: Create environment file on server
+        run: |
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "echo 'CONFIG_PATH=${{ env.CONFIG_PATH }}' > ${{ env.ENV_FILE_PATH }}"
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "echo 'DATABASE_URL=postgres://sso_user:${{ secrets.PG_PASSWORD }}@localhost:5432/sso_db?sslmode=disable' >> ${{ env.ENV_FILE_PATH }}"
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Copy systemd service file
+        run: |
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no ${{ github.workspace }}/deployment/grpc-auth.service ${{ env.HOST }}:/tmp/grpc-auth.service
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mv /tmp/grpc-auth.service /etc/systemd/system/grpc-auth.service"
+      - name: Start application
+        run: |
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "systemctl daemon-reload && systemctl restart grpc-auth.service"
+
+  
