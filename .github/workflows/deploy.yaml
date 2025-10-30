@@ -67,6 +67,7 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Run DB Migrations on server
         run: |
+          ls -la ${{ github.workspace }}/cmd/sso
           # Убедимся, что папка для деплоя существует
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mkdir -p ${{ env.DEPLOY_DIRECTORY }}/migrations"
 
